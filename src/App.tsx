@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import mqtt from 'mqtt';
-import { Power, Settings2, Droplets, Thermometer, Radio, Wifi, WifiOff, Zap, Lightbulb } from 'lucide-react';
+import { Power, Settings2, Droplets, Thermometer, Radio, Wifi, WifiOff, Zap, Lightbulb, Activity } from 'lucide-react';
 import { SensorData, RelayStatus } from './types';
 
 const BROKER_URL = 'wss://broker.emqx.io:8084/mqtt';
@@ -12,6 +12,14 @@ export default function App() {
 
   const [sensorData, setSensorData] = useState<SensorData>({ suhu: 0, kelembaban: 0 });
   const [relayStatus, setRelayStatus] = useState<RelayStatus>({ r1: 0, r2: 0, r3: 0, r4: 0, v1: 0, v2: 0 });
+  const [logs, setLogs] = useState<{id: string, text: string}[]>([]);
+
+  const addLog = useCallback((text: string) => {
+    setLogs(prev => {
+      const newLog = { id: Math.random().toString(36).substr(2, 9), text };
+      return [newLog, ...prev].slice(0, 6);
+    });
+  }, []);
 
   // Handle MQTT Connection
   useEffect(() => {
@@ -23,6 +31,7 @@ export default function App() {
 
     mqttClient.on('connect', () => {
       setConnected(true);
+      addLog(`Connected to ${BROKER_URL}`);
       // Subscribe to topics using current deviceId
       mqttClient.subscribe(`smartlight/${deviceId}/status`);
       mqttClient.subscribe(`smartlight/${deviceId}/sensor`);
@@ -39,8 +48,10 @@ export default function App() {
 
         if (topic === `smartlight/${deviceId}/status`) {
           setRelayStatus(payload);
+          addLog(`> Received status update`);
         } else if (topic === `smartlight/${deviceId}/sensor`) {
           setSensorData(payload);
+          addLog(`> Received sensor data`);
         }
       } catch (err) {
         console.error('Failed to parse MQTT message:', err);
@@ -56,14 +67,15 @@ export default function App() {
       mqttClient.end();
     };
     // Re-run effect when deviceId changes (in a real app we might just resubscribe, but for simplicity we reconnect)
-  }, [deviceId]);
+  }, [deviceId, addLog]);
 
   // Command Helper
   const sendCommand = useCallback((cmd: string) => {
     if (client && connected) {
+      addLog(`> Sent cmd: ${cmd}`);
       client.publish(`smartlight/${deviceId}/cmd`, cmd);
     }
-  }, [client, connected, deviceId]);
+  }, [client, connected, deviceId, addLog]);
 
   return (
     <div className="relative min-h-screen w-full flex flex-col z-0">
@@ -240,6 +252,21 @@ export default function App() {
                  </button>
               </div>
             </div>
+
+            {/* LIVE ACTIVITY PANEL */}
+            <div className="glass-card p-6 md:p-8 flex flex-col mt-6">
+              <h3 className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-4 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-cyan-400" />
+                Live Activity
+              </h3>
+              <div className="font-mono text-[10px] text-cyan-200/60 space-y-2 h-32 overflow-hidden flex flex-col justify-end">
+                {logs.slice().reverse().map(log => (
+                  <p key={log.id} className="animate-in fade-in slide-in-from-bottom-2 duration-300">{log.text}</p>
+                ))}
+                {logs.length === 0 && <p className="opacity-50 italic">Awaiting events...</p>}
+              </div>
+            </div>
+
           </div>
         </div>
 
